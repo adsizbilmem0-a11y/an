@@ -1,0 +1,41 @@
+name: Linux SSH Terminal
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9999
+
+    steps:
+      - name: Setup SSH
+        run: |
+          echo "runner:Admin123!" | sudo chpasswd
+          sudo systemctl start ssh
+
+      - name: Start Bore Tunnel
+        run: |
+          wget -q https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          tar -xf bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          chmod +x bore
+          
+          # Tüneli başlat ve çıktıyı hem dosyaya hem ekrana yazdır (Portu görebilmen için)
+          ./bore local 22 --to bore.pub 2>&1 | tee bore.log &
+          
+          # Portun oluşması için 5 saniye bekle ve sonra bilgileri yazdır
+          sleep 5
+          PORT=$(grep -oP 'remote_port=\K\d+' bore.log | head -1)
+
+          echo ""
+          echo "================================================================"
+          echo "🌐 PORT NUMARASI: $PORT"
+          echo "================================================================"
+          echo "💻 CMD / POWERSHELL ICIN TASLAK KOMUT:"
+          echo "ssh -o StrictHostKeyChecking=no runner@bore.pub -p $PORT"
+          echo ""
+          echo "🔑 SIFRE: Admin123!"
+          echo "================================================================"
+          echo "📌 NOT: Eğer yukarıda port yazmıyorsa, aşağıyı kontrol et!"
+          echo "================================================================"
+          
+          # Akışı devam ettir ki tünel kapanmasın
+          tail -f bore.log
