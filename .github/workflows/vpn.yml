@@ -7,32 +7,70 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: Download Dante (SOCKS5) & Bore
+      - name: Download Bore
         shell: powershell
         run: |
-          # Bore indir
           $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ekzhang/bore/releases/latest"
           $asset = $release.assets | Where-Object { $_.name -like "*x86_64*windows*" }
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "bore.zip"
           Expand-Archive -Path "bore.zip" -DestinationPath "." -Force
 
-          # 3proxy indir (Windows SOCKS5 proxy)
-          Invoke-WebRequest -Uri "https://github.com/3proxy/3proxy/releases/download/0.9.4/3proxy-0.9.4.x86_64.v141.zip" -OutFile "3proxy.zip"
-          Expand-Archive -Path "3proxy.zip" -DestinationPath "3proxy" -Force
-
-      - name: Start SOCKS5 & Bore
+      - name: Start SSH SOCKS5 & Bore
         shell: powershell
         run: |
-          # 3proxy config
-          $cfg = "nserver 8.8.8.8`nnscache 65536`ntimeouts 1 5 30 60 180 1800 15 60`nlog`nauth none`nallow *`nsocks -p1080"
-          [System.IO.File]::WriteAllText("$PWD\3proxy.cfg", $cfg, [System.Text.Encoding]::ASCII)
+          # Windows'ta OpenSSH built-in geliyor, SOCKS5 açıyoruz
+          # Kendine SSH at, -D ile SOCKS5 proxy aç
+          $sshCmd = 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -N -D 0.0.0.0:1080 localhost'
+          
+          # Daha basiti: Python ile SOCKS5 (Python da built-in geliyor runner'da)
+          $pyScript = @'
+import socket, threading, select
 
-          # 3proxy başlat
-          $proxyExe = Get-ChildItem -Recurse -Filter "3proxy.exe" | Select-Object -First 1
-          Start-Process -FilePath $proxyExe.FullName -ArgumentList "$PWD\3proxy.cfg" -NoNewWindow
+def handle(client):
+    try:
+        data = client.recv(262)
+        client.send(b'\x05\x00')
+        data = client.recv(262)
+        addr_type = data[3]
+        if addr_type == 1:
+            addr = socket.inet_ntoa(data[4:8])
+            port = int.from_bytes(data[8:10], 'big')
+        elif addr_type == 3:
+            l = data[4]
+            addr = data[5:5+l].decode()
+            port = int.from_bytes(data[5+l:7+l], 'big')
+        else:
+            client.close(); return
+        remote = socket.socket()
+        remote.connect((addr, port))
+        client.send(b'\x05\x00\x00\x01' + socket.inet_aton('0.0.0.0') + (0).to_bytes(2,'big'))
+        def fwd(a, b):
+            while True:
+                r, _, _ = select.select([a], [], [], 60)
+                if not r: break
+                d = a.recv(4096)
+                if not d: break
+                b.sendall(d)
+        threading.Thread(target=fwd, args=(client, remote), daemon=True).start()
+        threading.Thread(target=fwd, args=(remote, client), daemon=True).start()
+    except: client.close()
+
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(('0.0.0.0', 1080))
+s.listen(100)
+print('SOCKS5 ready on 1080', flush=True)
+while True:
+    c, _ = s.accept()
+    threading.Thread(target=handle, args=(c,), daemon=True).start()
+'@
+          $pyScript | Out-File -FilePath "socks5.py" -Encoding ascii
+
+          # Python başlat
+          Start-Process -FilePath "python" -ArgumentList "socks5.py" -NoNewWindow
           Start-Sleep -Seconds 3
 
-          # Bore ile dışarı aç
+          # Bore başlat
           Start-Process -FilePath ".\bore.exe" -ArgumentList "local 1080 --to bore.pub" -RedirectStandardError "bore.log" -NoNewWindow
           Start-Sleep -Seconds 8
 
@@ -43,10 +81,10 @@ jobs:
 
           Write-Host ""
           Write-Host "========================================"
-          Write-Host "SOCKS5 PROXY BILGISI:"
+          Write-Host "SOCKS5 PROXY:"
           Write-Host "Host : bore.pub"
           Write-Host "Port : $port"
-          Write-Host "Tip  : SOCKS5 (kullanici/sifre yok)"
+          Write-Host "Tip  : SOCKS5"
           Write-Host "========================================"
 
           while ($true) { Start-Sleep -Seconds 60 }
