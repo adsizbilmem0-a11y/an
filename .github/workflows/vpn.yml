@@ -1,37 +1,78 @@
-name: GitHub Proxy (Final Kesin Cozum)
+name: Windows VLESS Proxy
 on: workflow_dispatch
 
 jobs:
   proxy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 9999
+    runs-on: windows-latest
+    timeout-minutes: 350
 
     steps:
-      - name: Install Cloudflared & Gost
+      - name: Download Xray & Cloudflared
+        shell: powershell
         run: |
-          wget -q https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz
-          gunzip gost-linux-amd64-2.11.5.gz
-          mv gost-linux-amd64-2.11.5 gost
-          chmod +x gost
-          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared
-          chmod +x cloudflared
+          # Xray indir
+          Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip" -OutFile "xray.zip"
+          Expand-Archive -Path "xray.zip" -DestinationPath "." -Force
 
-      - name: Start VLESS & CF Tunnel
+          # Cloudflared indir
+          Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"
+
+      - name: Write Xray Config
+        shell: powershell
         run: |
-          # VLESS sunucusu başlat (ID: 66666666-6666-6666-6666-666666666666)
-          ./gost -L=vless://66666666-6666-6666-6666-666666666666@:8080?path=/ws > gost.log 2>&1 &
-          
-          # Cloudflare Tunnel başlat
-          ./cloudflared tunnel --url http://localhost:8080 > cf.log 2>&1 &
-          
-          sleep 10
-          CF_URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com' cf.log | head -n 1 | sed 's/https:\/\///')
+          $config = @'
+          {
+            "log": { "loglevel": "warning" },
+            "inbounds": [{
+              "port": 8080,
+              "protocol": "vless",
+              "settings": {
+                "clients": [{ "id": "66666666-6666-6666-6666-666666666666" }],
+                "decryption": "none"
+              },
+              "streamSettings": {
+                "network": "ws",
+                "wsSettings": { "path": "/ws" }
+              }
+            }],
+            "outbounds": [{ "protocol": "freedom" }]
+          }
+          '@
+          $config | Out-File -FilePath "config.json" -Encoding utf8
 
-          echo ""
-          echo "================================================================"
-          echo "🌐 NEKOBOX ICIN LINKIN (ASAGIDAKINI TAMAMEN KOPYALA):"
-          echo "================================================================"
-          echo "vless://66666666-6666-6666-6666-666666666666@$CF_URL:443?encryption=none&security=tls&sni=$CF_URL&type=ws&path=%2Fws#GitHub_VLESS"
-          echo "================================================================"
-          
-          tail -f cf.log
+      - name: Start Xray & Cloudflare Tunnel
+        shell: powershell
+        run: |
+          # Xray başlat
+          Start-Process -FilePath ".\xray.exe" -ArgumentList "run -c config.json" -RedirectStandardOutput "xray.log" -RedirectStandardError "xray-err.log" -NoNewWindow
+
+          # Cloudflared başlat
+          Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel --url http://localhost:8080 --no-autoupdate" -RedirectStandardOutput "cf.log" -RedirectStandardError "cf-err.log" -NoNewWindow
+
+          # URL çıkana kadar bekle
+          $cfUrl = ""
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 2
+            $log = Get-Content "cf-err.log" -ErrorAction SilentlyContinue
+            $match = $log | Select-String -Pattern "https://[a-zA-Z0-9-]+\.trycloudflare\.com"
+            if ($match) {
+              $cfUrl = $match.Matches[0].Value -replace "https://", ""
+              break
+            }
+          }
+
+          if (-not $cfUrl) {
+            Write-Host "HATA: Cloudflare URL bulunamadi!"
+            Get-Content "cf-err.log"
+            exit 1
+          }
+
+          Write-Host ""
+          Write-Host "================================================================"
+          Write-Host "NEKORAY ICIN VLESS LINKI:"
+          Write-Host "================================================================"
+          Write-Host "vless://66666666-6666-6666-6666-666666666666@${cfUrl}:443?encryption=none&security=tls&sni=${cfUrl}&type=ws&path=%2Fws#GitHub_Windows"
+          Write-Host "================================================================"
+
+          # Süre dolana kadar bekle
+          while ($true) { Start-Sleep -Seconds 60 }
