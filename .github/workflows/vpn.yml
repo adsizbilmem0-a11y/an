@@ -10,53 +10,39 @@ jobs:
       - name: Download Xray & Bore
         shell: powershell
         run: |
-          # Xray indir
           Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip" -OutFile "xray.zip"
           Expand-Archive -Path "xray.zip" -DestinationPath "." -Force
 
-          # Bore latest release URL'sini bul
           $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ekzhang/bore/releases/latest"
           $asset = $release.assets | Where-Object { $_.name -like "*x86_64*windows*" }
-          Write-Host "Bore indiriliyor: $($asset.browser_download_url)"
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "bore.zip"
           Expand-Archive -Path "bore.zip" -DestinationPath "." -Force
 
       - name: Write Xray Config
-        shell: powershell
+        shell: cmd
         run: |
-          $config = @'
-          {
-            "log": { "loglevel": "warning" },
-            "inbounds": [{
-              "port": 8080,
-              "protocol": "vless",
-              "settings": {
-                "clients": [{ "id": "66666666-6666-6666-6666-666666666666" }],
-                "decryption": "none"
-              },
-              "streamSettings": {
-                "network": "tcp"
-              }
-            }],
-            "outbounds": [{ "protocol": "freedom" }]
-          }
-          '@
-          $config | Out-File -FilePath "config.json" -Encoding utf8
+          echo {"log":{"loglevel":"warning"},"inbounds":[{"port":8080,"protocol":"vless","settings":{"clients":[{"id":"66666666-6666-6666-6666-666666666666"}],"decryption":"none"},"streamSettings":{"network":"tcp"}}],"outbounds":[{"protocol":"freedom"}]} > config.json
 
       - name: Start Xray & Bore Tunnel
         shell: powershell
         run: |
+          # Config kontrol
+          $raw = [System.IO.File]::ReadAllBytes("config.json")
+          Write-Host "İlk 3 byte: $($raw[0]) $($raw[1]) $($raw[2])"
+          
           Start-Process -FilePath ".\xray.exe" -ArgumentList "run -c config.json" -NoNewWindow
           Start-Sleep -Seconds 3
 
           Start-Process -FilePath ".\bore.exe" -ArgumentList "local 8080 --to bore.pub" -RedirectStandardOutput "bore.log" -RedirectStandardError "bore-err.log" -NoNewWindow
           Start-Sleep -Seconds 8
 
-          $allLog = (Get-Content "bore.log" -ErrorAction SilentlyContinue) + (Get-Content "bore-err.log" -ErrorAction SilentlyContinue)
-          Write-Host "=== BORE LOG ==="
-          $allLog | ForEach-Object { Write-Host $_ }
+          $allLog = @()
+          $allLog += Get-Content "bore.log" -ErrorAction SilentlyContinue
+          $allLog += Get-Content "bore-err.log" -ErrorAction SilentlyContinue
+          $logText = $allLog -join "`n"
+          Write-Host $logText
 
-          $match = [regex]::Match(($allLog -join "`n"), "bore\.pub:(\d+)")
+          $match = [regex]::Match($logText, "remote_port=(\d+)")
           $port = $match.Groups[1].Value
 
           Write-Host ""
