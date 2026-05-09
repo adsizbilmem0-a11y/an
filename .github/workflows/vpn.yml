@@ -15,62 +15,18 @@ jobs:
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "bore.zip"
           Expand-Archive -Path "bore.zip" -DestinationPath "." -Force
 
-      - name: Start SSH SOCKS5 & Bore
+      - name: Write SOCKS5 Script
         shell: powershell
         run: |
-          # Windows'ta OpenSSH built-in geliyor, SOCKS5 açıyoruz
-          # Kendine SSH at, -D ile SOCKS5 proxy aç
-          $sshCmd = 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -N -D 0.0.0.0:1080 localhost'
-          
-          # Daha basiti: Python ile SOCKS5 (Python da built-in geliyor runner'da)
-          $pyScript = @'
-import socket, threading, select
+          $b64 = "aW1wb3J0IHNvY2tldCwgdGhyZWFkaW5nLCBzZWxlY3QKCmRlZiBoYW5kbGUoY2xpZW50KToKICAgIHRyeToKICAgICAgICBkYXRhID0gY2xpZW50LnJlY3YoMjYyKQogICAgICAgIGNsaWVudC5zZW5kKGInXHgwNVx4MDAnKQogICAgICAgIGRhdGEgPSBjbGllbnQucmVjdigyNjIpCiAgICAgICAgYWRkcl90eXBlID0gZGF0YVszXQogICAgICAgIGlmIGFkZHJfdHlwZSA9PSAxOgogICAgICAgICAgICBhZGRyID0gc29ja2V0LmluZXRfbnRvYShkYXRhWzQ6OF0pCiAgICAgICAgICAgIHBvcnQgPSBpbnQuZnJvbV9ieXRlcyhkYXRhWzg6MTBdLCAnYmlnJykKICAgICAgICBlbGlmIGFkZHJfdHlwZSA9PSAzOgogICAgICAgICAgICBsID0gZGF0YVs0XQogICAgICAgICAgICBhZGRyID0gZGF0YVs1OjUrbF0uZGVjb2RlKCkKICAgICAgICAgICAgcG9ydCA9IGludC5mcm9tX2J5dGVzKGRhdGFbNStsMTo3K2xdLCAnYmlnJykKICAgICAgICBlbHNlOgogICAgICAgICAgICBjbGllbnQuY2xvc2UoKQogICAgICAgICAgICByZXR1cm4KICAgICAgICByZW1vdGUgPSBzb2NrZXQuc29ja2V0KCkKICAgICAgICByZW1vdGUuY29ubmVjdCgoYWRkciwgcG9ydCkpCiAgICAgICAgY2xpZW50LnNlbmQoYidceDA1XHgwMFx4MDBceDAxJyArIHNvY2tldC5pbmV0X2F0b24oJzAuMC4wLjAnKSArICgwKS50b19ieXRlcygyLCAnYmlnJykpCiAgICAgICAgZGVmIGZ3ZChhLCBiKToKICAgICAgICAgICAgd2hpbGUgVHJ1ZToKICAgICAgICAgICAgICAgIHIsIF8sIF8gPSBzZWxlY3Quc2VsZWN0KFthXSwgW10sIFtdLCA2MCkKICAgICAgICAgICAgICAgIGlmIG5vdCByOiBicmVhawogICAgICAgICAgICAgICAgZCA9IGEucmVjdig0MDk2KQogICAgICAgICAgICAgICAgaWYgbm90IGQ6IGJyZWFrCiAgICAgICAgICAgICAgICBiLnNlbmRhbGwoZCkKICAgICAgICB0aHJlYWRpbmcuVGhyZWFkKHRhcmdldD1md2QsIGFyZ3M9KGNsaWVudCwgcmVtb3RlKSwgZGFlbW9uPVRydWUpLnN0YXJ0KCkKICAgICAgICB0aHJlYWRpbmcuVGhyZWFkKHRhcmdldD1md2QsIGFyZ3M9KHJlbW90ZSwgY2xpZW50KSwgZGFlbW9uPVRydWUpLnN0YXJ0KCkKICAgIGV4Y2VwdDoKICAgICAgICBjbGllbnQuY2xvc2UoKQoKcyA9IHNvY2tldC5zb2NrZXQoKQpzLnNldHNvY2tvcHQoc29ja2V0LlNPTF9TT0NLRVQsIHNvY2tldC5TT19SRVVTRUFERFIsIDEpCnMuYmluZCgoJzAuMC4wLjAnLCAxMDgwKSkKcy5saXN0ZW4oMTAwKQpwcmludCgnU09DS1M1IHJlYWR5IG9uIDEwODAnLCBmbHVzaD1UcnVlKQp3aGlsZSBUcnVlOgogICAgYywgXyA9IHMuYWNjZXB0KCkKICAgIHRocmVhZGluZy5UaHJlYWQodGFyZ2V0PWhhbmRsZSwgYXJncz0oYywpLCBkYWVtb249VHJ1ZSkuc3RhcnQoKQo="
+          [System.IO.File]::WriteAllBytes("socks5.py", [Convert]::FromBase64String($b64))
 
-def handle(client):
-    try:
-        data = client.recv(262)
-        client.send(b'\x05\x00')
-        data = client.recv(262)
-        addr_type = data[3]
-        if addr_type == 1:
-            addr = socket.inet_ntoa(data[4:8])
-            port = int.from_bytes(data[8:10], 'big')
-        elif addr_type == 3:
-            l = data[4]
-            addr = data[5:5+l].decode()
-            port = int.from_bytes(data[5+l:7+l], 'big')
-        else:
-            client.close(); return
-        remote = socket.socket()
-        remote.connect((addr, port))
-        client.send(b'\x05\x00\x00\x01' + socket.inet_aton('0.0.0.0') + (0).to_bytes(2,'big'))
-        def fwd(a, b):
-            while True:
-                r, _, _ = select.select([a], [], [], 60)
-                if not r: break
-                d = a.recv(4096)
-                if not d: break
-                b.sendall(d)
-        threading.Thread(target=fwd, args=(client, remote), daemon=True).start()
-        threading.Thread(target=fwd, args=(remote, client), daemon=True).start()
-    except: client.close()
-
-s = socket.socket()
-s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(('0.0.0.0', 1080))
-s.listen(100)
-print('SOCKS5 ready on 1080', flush=True)
-while True:
-    c, _ = s.accept()
-    threading.Thread(target=handle, args=(c,), daemon=True).start()
-'@
-          $pyScript | Out-File -FilePath "socks5.py" -Encoding ascii
-
-          # Python başlat
+      - name: Start SOCKS5 & Bore
+        shell: powershell
+        run: |
           Start-Process -FilePath "python" -ArgumentList "socks5.py" -NoNewWindow
           Start-Sleep -Seconds 3
 
-          # Bore başlat
           Start-Process -FilePath ".\bore.exe" -ArgumentList "local 1080 --to bore.pub" -RedirectStandardError "bore.log" -NoNewWindow
           Start-Sleep -Seconds 8
 
