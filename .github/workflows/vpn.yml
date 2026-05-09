@@ -1,4 +1,4 @@
-name: Windows VLESS Proxy (bore)
+name: Windows SOCKS5 Proxy
 on: workflow_dispatch
 
 jobs:
@@ -7,48 +7,46 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: Download Xray & Bore
+      - name: Download Dante (SOCKS5) & Bore
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip" -OutFile "xray.zip"
-          Expand-Archive -Path "xray.zip" -DestinationPath "." -Force
-
+          # Bore indir
           $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ekzhang/bore/releases/latest"
           $asset = $release.assets | Where-Object { $_.name -like "*x86_64*windows*" }
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "bore.zip"
           Expand-Archive -Path "bore.zip" -DestinationPath "." -Force
 
-      - name: Write Xray Config
-        shell: cmd
-        run: |
-          echo {"log":{"loglevel":"warning"},"inbounds":[{"port":8080,"protocol":"vless","settings":{"clients":[{"id":"66666666-6666-6666-6666-666666666666"}],"decryption":"none"},"streamSettings":{"network":"tcp"}}],"outbounds":[{"protocol":"freedom"}]} > config.json
+          # 3proxy indir (Windows SOCKS5 proxy)
+          Invoke-WebRequest -Uri "https://github.com/3proxy/3proxy/releases/download/0.9.4/3proxy-0.9.4.x86_64.v141.zip" -OutFile "3proxy.zip"
+          Expand-Archive -Path "3proxy.zip" -DestinationPath "3proxy" -Force
 
-      - name: Start Xray & Bore Tunnel
+      - name: Start SOCKS5 & Bore
         shell: powershell
         run: |
-          # Config kontrol
-          $raw = [System.IO.File]::ReadAllBytes("config.json")
-          Write-Host "İlk 3 byte: $($raw[0]) $($raw[1]) $($raw[2])"
-          
-          Start-Process -FilePath ".\xray.exe" -ArgumentList "run -c config.json" -NoNewWindow
+          # 3proxy config
+          $cfg = "nserver 8.8.8.8`nnscache 65536`ntimeouts 1 5 30 60 180 1800 15 60`nlog`nauth none`nallow *`nsocks -p1080"
+          [System.IO.File]::WriteAllText("$PWD\3proxy.cfg", $cfg, [System.Text.Encoding]::ASCII)
+
+          # 3proxy başlat
+          $proxyExe = Get-ChildItem -Recurse -Filter "3proxy.exe" | Select-Object -First 1
+          Start-Process -FilePath $proxyExe.FullName -ArgumentList "$PWD\3proxy.cfg" -NoNewWindow
           Start-Sleep -Seconds 3
 
-          Start-Process -FilePath ".\bore.exe" -ArgumentList "local 8080 --to bore.pub" -RedirectStandardOutput "bore.log" -RedirectStandardError "bore-err.log" -NoNewWindow
+          # Bore ile dışarı aç
+          Start-Process -FilePath ".\bore.exe" -ArgumentList "local 1080 --to bore.pub" -RedirectStandardError "bore.log" -NoNewWindow
           Start-Sleep -Seconds 8
 
-          $allLog = @()
-          $allLog += Get-Content "bore.log" -ErrorAction SilentlyContinue
-          $allLog += Get-Content "bore-err.log" -ErrorAction SilentlyContinue
-          $logText = $allLog -join "`n"
-          Write-Host $logText
-
-          $match = [regex]::Match($logText, "remote_port=(\d+)")
+          $log = Get-Content "bore.log" -ErrorAction SilentlyContinue
+          $log | ForEach-Object { Write-Host $_ }
+          $match = [regex]::Match(($log -join "`n"), "remote_port=(\d+)")
           $port = $match.Groups[1].Value
 
           Write-Host ""
-          Write-Host "================================================================"
-          Write-Host "NEKORAY LINKI:"
-          Write-Host "vless://66666666-6666-6666-6666-666666666666@bore.pub:$port?encryption=none&security=none&type=tcp#GitHub_bore"
-          Write-Host "================================================================"
+          Write-Host "========================================"
+          Write-Host "SOCKS5 PROXY BILGISI:"
+          Write-Host "Host : bore.pub"
+          Write-Host "Port : $port"
+          Write-Host "Tip  : SOCKS5 (kullanici/sifre yok)"
+          Write-Host "========================================"
 
           while ($true) { Start-Sleep -Seconds 60 }
