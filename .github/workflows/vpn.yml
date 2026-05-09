@@ -1,4 +1,4 @@
-name: GitHub Proxy (Cloudflare Tunnel)
+name: GitHub Proxy (Final Kesin Cozum)
 on: workflow_dispatch
 
 jobs:
@@ -9,41 +9,29 @@ jobs:
     steps:
       - name: Install Cloudflared & Gost
         run: |
-          # Gost indir
           wget -q https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz
           gunzip gost-linux-amd64-2.11.5.gz
           mv gost-linux-amd64-2.11.5 gost
           chmod +x gost
-
-          # Cloudflared (Argo Tunnel) indir
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared
           chmod +x cloudflared
 
-      - name: Start Services
+      - name: Start VLESS & CF Tunnel
         run: |
-          # Shadowsocks başlat (8080 portunda)
-          ./gost -L=ss://aes-256-gcm:admin123@:8080 > gost.log 2>&1 &
+          # VLESS sunucusu başlat (ID: 66666666-6666-6666-6666-666666666666)
+          ./gost -L=vless://66666666-6666-6666-6666-666666666666@:8080?path=/ws > gost.log 2>&1 &
           
-          # Cloudflare Tunnel başlat (TCP modunda 8080'i dışarı açar)
-          # NOT: Cloudflare ücretsiz tünellerde HTTP bekler ama biz TCP stream yapacağız.
-          ./cloudflared tunnel --url tcp://localhost:8080 > cf.log 2>&1 &
+          # Cloudflare Tunnel başlat
+          ./cloudflared tunnel --url http://localhost:8080 > cf.log 2>&1 &
           
           sleep 10
-          # Tunnel linkini logdan çek
           CF_URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com' cf.log | head -n 1 | sed 's/https:\/\///')
 
           echo ""
           echo "================================================================"
-          echo "🌐 CLOUDFLARE ÜZERİNDEN BAĞLANTI"
+          echo "🌐 NEKOBOX ICIN LINKIN (ASAGIDAKINI TAMAMEN KOPYALA):"
           echo "================================================================"
-          echo "Adres (Address): $CF_URL"
-          echo "Port: 7890 (Cloudflare standart TCP portunu kullanır)"
-          echo "----------------------------------------------------------------"
-          echo "🔗 NEKOBOX'A MANUEL EKLE (Shadowsocks):"
-          echo "Address: $CF_URL"
-          echo "Port: 443"
-          echo "Encryption: aes-256-gcm"
-          echo "Password: admin123"
+          echo "vless://66666666-6666-6666-6666-666666666666@$CF_URL:443?encryption=none&security=tls&sni=$CF_URL&type=ws&path=%2Fws#GitHub_VLESS"
           echo "================================================================"
           
           tail -f cf.log
