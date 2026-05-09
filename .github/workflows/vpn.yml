@@ -1,0 +1,48 @@
+name: GitHub Proxy VPN
+on: workflow_dispatch
+
+jobs:
+  proxy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9999
+
+    steps:
+      - name: Install Gost & Bore
+        run: |
+          # Gost (Proxy Server) indir
+          wget -q https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz
+          gunzip gost-linux-amd64-2.11.5.gz
+          mv gost-linux-amd64-2.11.5 gost
+          chmod +x gost
+
+          # Bore (Tunnel) indir
+          wget -q https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          tar -xf bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          chmod +x bore
+
+      - name: Start Proxy and Tunnel
+        run: |
+          # SOCKS5 Proxy başlat (Kullanıcı: admin, Şifre: pass123)
+          ./gost -L=admin:pass123@:8080 > gost.log 2>&1 &
+          
+          # Tüneli başlat (8080 portunu dışarı açar)
+          ./bore local 8080 --to bore.pub > bore.log 2>&1 &
+          
+          sleep 5
+          PORT=$(grep -oP 'remote_port=\K\d+' bore.log | head -1)
+
+          echo ""
+          echo "================================================================"
+          echo "🌐 BAĞLANTI BİLGİLERİ (Nekoray / V2Ray / Proxy)"
+          echo "================================================================"
+          echo "Sunucu (Address): bore.pub"
+          echo "Port: $PORT"
+          echo "Protokol: SOCKS5"
+          echo "Kullanıcı Adı: admin"
+          echo "Şifre: pass123"
+          echo "================================================================"
+          echo "🔗 NEKORAY İÇİN URL:"
+          echo "socks5://admin:pass123@bore.pub:$PORT"
+          echo "================================================================"
+          
+          tail -f bore.log
