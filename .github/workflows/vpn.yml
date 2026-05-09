@@ -1,4 +1,4 @@
-name: GitHub Proxy VPN (Shadowsocks)
+name: GitHub Proxy (Cloudflare Tunnel)
 on: workflow_dispatch
 
 jobs:
@@ -7,33 +7,43 @@ jobs:
     timeout-minutes: 9999
 
     steps:
-      - name: Install Gost & Bore
+      - name: Install Cloudflared & Gost
         run: |
+          # Gost indir
           wget -q https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz
           gunzip gost-linux-amd64-2.11.5.gz
           mv gost-linux-amd64-2.11.5 gost
           chmod +x gost
 
-          wget -q https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
-          tar -xf bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
-          chmod +x bore
+          # Cloudflared (Argo Tunnel) indir
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared
+          chmod +x cloudflared
 
-      - name: Start Shadowsocks Proxy and Tunnel
+      - name: Start Services
         run: |
-          # Shadowsocks protokolü başlat (Şifre: admin123, Metot: aes-256-gcm)
+          # Shadowsocks başlat (8080 portunda)
           ./gost -L=ss://aes-256-gcm:admin123@:8080 > gost.log 2>&1 &
           
-          # Tüneli başlat
-          ./bore local 8080 --to bore.pub > bore.log 2>&1 &
+          # Cloudflare Tunnel başlat (TCP modunda 8080'i dışarı açar)
+          # NOT: Cloudflare ücretsiz tünellerde HTTP bekler ama biz TCP stream yapacağız.
+          ./cloudflared tunnel --url tcp://localhost:8080 > cf.log 2>&1 &
           
-          sleep 5
-          PORT=$(grep -oP 'remote_port=\K\d+' bore.log | head -1)
+          sleep 10
+          # Tunnel linkini logdan çek
+          CF_URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com' cf.log | head -n 1 | sed 's/https:\/\///')
 
           echo ""
           echo "================================================================"
-          echo "🌐 NEKORAY / NEKOBOX İÇİN BAĞLANTI BİLGİSİ"
+          echo "🌐 CLOUDFLARE ÜZERİNDEN BAĞLANTI"
           echo "================================================================"
-          echo "ss://YWVzLTI1Ni1nY206YWRtaW4xMjM@bore.pub:$PORT"
+          echo "Adres (Address): $CF_URL"
+          echo "Port: 7890 (Cloudflare standart TCP portunu kullanır)"
+          echo "----------------------------------------------------------------"
+          echo "🔗 NEKOBOX'A MANUEL EKLE (Shadowsocks):"
+          echo "Address: $CF_URL"
+          echo "Port: 443"
+          echo "Encryption: aes-256-gcm"
+          echo "Password: admin123"
           echo "================================================================"
           
-          tail -f bore.log
+          tail -f cf.log
