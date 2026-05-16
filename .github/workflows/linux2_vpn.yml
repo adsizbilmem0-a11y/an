@@ -1,4 +1,4 @@
-name: Linux SSH
+name: Linuxfsfsf
 on: workflow_dispatch
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
           curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz | tar xz
           chmod +x ngrok
 
-          ./ngrok tcp 22 --authtoken NGROK_TOKEN_BURAYA &
+          ./ngrok tcp 22 --authtoken 2tzO4oCWDZtcFZxIS84yodE1Muh_7nU2g16Eq1MQHtQCiF1QQ &
           sleep 5
 
           TUNNEL=$(curl -s http://localhost:4040/api/tunnels | grep -oP '"public_url":"\K[^"]+' | head -1)
