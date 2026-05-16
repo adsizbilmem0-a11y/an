@@ -1,4 +1,4 @@
-name: Linuxfsfsf
+name: Lindsadasd
 on: workflow_dispatch
 jobs:
   build:
@@ -10,23 +10,22 @@ jobs:
           echo "runner:Admin123!" | sudo chpasswd
           sudo systemctl start ssh
 
-      - name: Start Ngrok Tunnel
+      - name: Start Bore Tunnel
         run: |
-          curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz | tar xz
-          chmod +x ngrok
+          wget -q https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          tar -xf bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          chmod +x bore
 
-          ./ngrok tcp 22 --authtoken 2tzO4oCWDZtcFZxIS84yodE1Muh_7nU2g16Eq1MQHtQCiF1QQ &
-          sleep 5
+          ./bore local 22 --to bore.pub 2>&1 | tee bore.log &
+          sleep 8
 
-          TUNNEL=$(curl -s http://localhost:4040/api/tunnels | grep -oP '"public_url":"\K[^"]+' | head -1)
-          HOST=$(echo $TUNNEL | sed 's/tcp:\/\///' | cut -d: -f1)
-          PORT=$(echo $TUNNEL | sed 's/tcp:\/\///' | cut -d: -f2)
+          PORT=$(grep -oP 'remote_port=\K[0-9]+' bore.log | head -1)
 
           echo ""
           echo "========================================================"
           echo "CMD'ye yapistir:"
-          echo "ssh -D 1080 -N -o StrictHostKeyChecking=no runner@$HOST -p $PORT"
+          echo "ssh -D 1080 -N -o StrictHostKeyChecking=no runner@bore.pub -p $PORT"
           echo "Sifre: Admin123!"
           echo "========================================================"
 
-          tail -f /dev/null
+          tail -f bore.log
