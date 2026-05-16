@@ -1,0 +1,44 @@
+name: Linux SSH Terminal
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9999
+    steps:
+      - name: Setup SSH
+        run: |
+          echo "runner:Admin123!" | sudo chpasswd
+          sudo systemctl start ssh
+
+      - name: Start Bore Tunnel + SOCKS5
+        run: |
+          wget -q https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          tar -xf bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
+          chmod +x bore
+
+          ./bore local 22 --to bore.pub 2>&1 | tee bore.log &
+          sleep 6
+
+          PORT=$(grep -oP 'remote_port=\K\d+' bore.log | head -1)
+
+          echo ""
+          echo "========================================================"
+          echo "  NEKORAY ICIN SOCKS5 BAGLANTI BILGILERI"
+          echo "========================================================"
+          echo ""
+          echo "  1) Windows CMD'yi ac ve su komutu calistir:"
+          echo ""
+          echo "  ssh -D 1080 -N -o StrictHostKeyChecking=no runner@bore.pub -p $PORT"
+          echo ""
+          echo "  Sifre: Admin123!"
+          echo ""
+          echo "  2) CMD acik kalsın, Nekoray'a su bilgileri gir:"
+          echo ""
+          echo "  Tur   : SOCKS5"
+          echo "  Adres : 127.0.0.1"
+          echo "  Port  : 1080"
+          echo ""
+          echo "========================================================"
+          echo ""
+
+          tail -f bore.log
