@@ -1,4 +1,4 @@
-name: Linux SSH Terminal
+name: Linux SSH Terminal vpn
 on: workflow_dispatch
 jobs:
   build:
