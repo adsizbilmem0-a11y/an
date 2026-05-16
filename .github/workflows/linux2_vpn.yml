@@ -1,4 +1,4 @@
-name: Linux SSH Terminal vpn
+name: Linux SSH
 on: workflow_dispatch
 jobs:
   build:
@@ -10,35 +10,23 @@ jobs:
           echo "runner:Admin123!" | sudo chpasswd
           sudo systemctl start ssh
 
-      - name: Start Bore Tunnel + SOCKS5
+      - name: Start Ngrok Tunnel
         run: |
-          wget -q https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
-          tar -xf bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz
-          chmod +x bore
+          curl -sSL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz | tar xz
+          chmod +x ngrok
 
-          ./bore local 22 --to bore.pub 2>&1 | tee bore.log &
-          sleep 6
+          ./ngrok tcp 22 --authtoken NGROK_TOKEN_BURAYA &
+          sleep 5
 
-          PORT=$(grep -oP 'remote_port=\K\d+' bore.log | head -1)
+          TUNNEL=$(curl -s http://localhost:4040/api/tunnels | grep -oP '"public_url":"\K[^"]+' | head -1)
+          HOST=$(echo $TUNNEL | sed 's/tcp:\/\///' | cut -d: -f1)
+          PORT=$(echo $TUNNEL | sed 's/tcp:\/\///' | cut -d: -f2)
 
           echo ""
           echo "========================================================"
-          echo "  NEKORAY ICIN SOCKS5 BAGLANTI BILGILERI"
+          echo "CMD'ye yapistir:"
+          echo "ssh -D 1080 -N -o StrictHostKeyChecking=no runner@$HOST -p $PORT"
+          echo "Sifre: Admin123!"
           echo "========================================================"
-          echo ""
-          echo "  1) Windows CMD'yi ac ve su komutu calistir:"
-          echo ""
-          echo "  ssh -D 1080 -N -o StrictHostKeyChecking=no runner@bore.pub -p $PORT"
-          echo ""
-          echo "  Sifre: Admin123!"
-          echo ""
-          echo "  2) CMD acik kalsın, Nekoray'a su bilgileri gir:"
-          echo ""
-          echo "  Tur   : SOCKS5"
-          echo "  Adres : 127.0.0.1"
-          echo "  Port  : 1080"
-          echo ""
-          echo "========================================================"
-          echo ""
 
-          tail -f bore.log
+          tail -f /dev/null
